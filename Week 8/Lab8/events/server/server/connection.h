@@ -36,11 +36,11 @@ public:
 
 	// Call this when the socket is ready to read.
 	// Returns true if the socket should be closed.
-	bool doRead();
+	void doRead();
 
 	// Call this when the socket is ready to write.
 	// Returns true if the socket should be closed.
-	bool doWrite();
+	void doWrite();
 
 private:
 	// This client's socket.
