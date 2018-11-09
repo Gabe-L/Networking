@@ -1,53 +1,75 @@
 #include <SFML/Audio.hpp>
 #include <SFML/Graphics.hpp>
-int main()
+#include "Game.h"
+#include "Input.h"
+
+void main()
 {
 	// Create the main window
-	sf::RenderWindow window(sf::VideoMode(800, 600), "SFML window");
-	// Load a sprite to display
-	sf::Texture texture;
-	if (!texture.loadFromFile("ready.png"))
-	{
-		return EXIT_FAILURE;
-	}
-	sf::Sprite sprite(texture);
-	
-	// Create a graphical text to display
-	sf::Font font;
-	if (!font.loadFromFile("timesnewarial.ttf"))
-	{
-		return EXIT_FAILURE;
-	}
-	sf::Text text("Hello SFML", font, 50);
-	
-	
-	// Load a music to play
-	//sf::Music music;
-	//if (!music.openFromFile("nice_music.ogg"))
-	//	return EXIT_FAILURE;
-	//// Play the music
-	//music.play();
-	
-	
-	// Start the game loop
+	sf::RenderWindow window(sf::VideoMode(800, 600), "CS:2D");
+	Input input;
+	Game game(&window);
+
+	sf::Clock clock;
+
+	float deltaTime;
+
 	while (window.isOpen())
 	{
-		// Process events
+		// Get delta time
+		deltaTime = clock.restart().asSeconds();
+
+		// Handle events
 		sf::Event event;
-		while (window.pollEvent(event))
-		{
-			// Close window: exit
-			if (event.type == sf::Event::Closed)
+		while (window.pollEvent(event)) {
+			switch (event.type)
+			{
+			case sf::Event::Closed:
 				window.close();
+				break;
+			case sf::Event::Resized:
+				window.setView(sf::View(sf::FloatRect(0, 0, event.size.width, event.size.height)));
+				break;
+			case sf::Event::KeyPressed:
+				input.setKeyDown(event.key.code);
+				break;
+			case sf::Event::KeyReleased:
+				input.setKeyUp(event.key.code);
+				break;
+			case sf::Event::MouseMoved:
+				input.setMousePosition(event.mouseMove.x, event.mouseMove.y);
+				break;
+			case sf::Event::MouseButtonPressed:
+				if (sf::Mouse::isButtonPressed(sf::Mouse::Left))
+				{
+					input.setLmbDown();
+				}
+				else
+				{
+					input.setRmbDown();
+				}
+				break;
+			case sf::Event::MouseButtonReleased:
+				if (!sf::Mouse::isButtonPressed(sf::Mouse::Left))
+				{
+					input.setLmbUp();
+				}
+				if (!sf::Mouse::isButtonPressed(sf::Mouse::Right))
+				{
+					input.setRmbUp();
+				}
+				break;
+			default:
+				// don't handle other events
+				break;
+			}
 		}
-		// Clear screen
-		window.clear();
-		// Draw the sprite
-		//window.draw(sprite);
-		// Draw the string
-		window.draw(text);
-		// Update the window
-		window.display();
+
+		// Update game
+		game.handleInput(&input);
+		game.update(deltaTime);
+		game.render();
+
 	}
-	return EXIT_SUCCESS;
+
 }
