@@ -20,3 +20,17 @@ void Player::setVelocity(sf::Vector2f vel)
 {
 	velocity = vel;
 }
+
+void Player::OriginToCentre()
+{
+	int width = getTextureRect().width;
+	int height = getTextureRect().height;
+
+	setOrigin(width / 2, height / 2);
+
+}
+
+sf::Vector2f Player::getVelocity()
+{
+	return velocity;
+}
