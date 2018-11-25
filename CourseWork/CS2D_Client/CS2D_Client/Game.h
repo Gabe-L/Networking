@@ -1,10 +1,9 @@
 #pragma once
-#include <SFML/Graphics.hpp>
-#include <SFML\Network.hpp>
-#include <Windows.h>
-#include "Input.h"
+#include "pch.h"
+
 #include "Player.h"
-#include "protocol.h"
+#include "Input.h"
+#include <vector>
 
 using namespace std;
 
@@ -30,27 +29,39 @@ private:
 	void endDraw();
 	void renderUI();
 	void reset();
+	void processMessage(sf::Packet _packet);
+	void sendMessage(sf::Packet _packet, sf::IpAddress _destAddr, unsigned short _destPort);
+	void pingServer(sf::UdpSocket* _sock, sf::IpAddress _addr, unsigned short _port);
 
 	// #TODO: Clear test vars
-	Player test;
-	sf::Texture tst;
+	Player localPlayer;
+	int localIdentity;
+	sf::Texture playerTexture;
+	sf::Texture enemyTexture;
 	sf::Sprite collider;
 
-	sf::UdpSocket sock;
+	// Local network info
+	sf::UdpSocket localSock;
 
-	sf::IpAddress addr;
-	unsigned short port;
+	sf::IpAddress localAddr;
+	unsigned short localPort;
 
+
+	// Server network info
 	sf::IpAddress serverAddr;
-	unsigned short serverport;
-	bool clicked;
+	unsigned short serverPort;
 
+	// Enemies
+	std::vector<Player*> enemies;
+
+	bool clicked;
 	float tick;
 	float totalTime;
+	float latency;
 
 	sf::VertexArray hitScanLine;
 	sf::Color lineColour;
-	
+
 	sf::Vector2f MousePos;
 
 };

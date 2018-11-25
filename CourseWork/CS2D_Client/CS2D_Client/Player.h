@@ -1,5 +1,6 @@
 #pragma once
-#include "SFML/Graphics.hpp"
+#include "pch.h"
+
 class Player : public sf::Sprite
 {
 public:
@@ -11,6 +12,8 @@ public:
 	void OriginToCentre();
 
 	sf::Vector2f getVelocity();
+
+	int playerID;
 
 protected:
 	sf::Vector2f velocity;

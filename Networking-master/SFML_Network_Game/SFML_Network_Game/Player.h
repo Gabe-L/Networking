@@ -16,3 +16,4 @@ protected:
 	sf::Vector2f velocity;
 
 };
+

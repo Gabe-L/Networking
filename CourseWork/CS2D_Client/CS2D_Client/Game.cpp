@@ -1,3 +1,5 @@
+#include "pch.h"
+
 #include "Game.h"
 
 Game::Game(sf::RenderWindow* hwnd)
@@ -5,36 +7,42 @@ Game::Game(sf::RenderWindow* hwnd)
 	window = hwnd;
 
 	// Setup player
-	tst.loadFromFile("gfx/playerSprite.png");
-	test.setTexture(tst);
-	test.OriginToCentre();
-	test.setScale(0.5f, 0.5f);
+	playerTexture.loadFromFile("gfx/playerSprite.png");
+	enemyTexture.loadFromFile("gfx/enemySprite.png");
+
+	localPlayer.setTexture(playerTexture);
+	localPlayer.OriginToCentre();
+	localPlayer.setScale(0.5f, 0.5f);
+	localIdentity = -1;
 
 	// Setup test collider
-	collider.setTexture(tst);
+	collider.setTexture(playerTexture);
 	collider.setPosition(window->getSize().x / 2, window->getSize().y / 2);
 
-
+	latency = 0.0f;
 	tick = 0.f;
 	totalTime = 0.0f;
 
 	hitScanLine = sf::VertexArray(sf::LinesStrip, 2);
 	lineColour = sf::Color::White;
 
-	addr = "127.0.0.1";
-	port = 256;
+	localAddr = "127.0.0.1";
 
 	serverAddr = "127.0.0.1";
-	serverport = 255;
+	serverPort = 255;
 	clicked = false;
 
-	if (sock.bind(port, addr) != sf::Socket::Done)
+	if (localSock.bind(sf::Socket::AnyPort, localAddr) != sf::Socket::Done)
 	{
 		std::printf("Socket did not bind\n");
 	}
+	localPort = localSock.getLocalPort();
+	
+	// Join by pinging server
+	pingServer(&localSock, serverAddr, serverPort);
 
-	sock.setBlocking(false);
 
+	localSock.setBlocking(false);
 
 }
 Game::~Game()
@@ -43,41 +51,18 @@ Game::~Game()
 
 void Game::update(float deltaTime)
 {
+	
 	tick += deltaTime;
 	totalTime += deltaTime;
 
-	
+
 	sf::Packet ipPack;
 	sf::IpAddress recvAddr;
 	unsigned short recvPort;
 
-	if (sock.receive(ipPack, recvAddr, recvPort) == sf::Socket::Done)
+	if (localSock.receive(ipPack, recvAddr, recvPort) == sf::Socket::Done)
 	{
-
-		int messageType;
-
-		ipPack >> messageType;
-		switch (messageType) {
-		case MessageType::PingRequest:
-			SetUpMessage pingMessage;
-
-			float messageTime;
-			ipPack >> messageTime;
-
-			pingMessage.pingType = MessageType::PingInfo;
-			sf::Packet pingPack;
-			pingPack
-				<< MessageType::PingInfo
-				<< messageTime
-				<< totalTime;
-
-			if (sock.send(pingPack, serverAddr, serverport) != sf::Socket::Done) {
-				printf("Data send failed\n");
-			}
-
-			break;
-		}
-
+		processMessage(ipPack);
 	}
 
 	if (tick >= 1.f / 64)
@@ -85,40 +70,36 @@ void Game::update(float deltaTime)
 		tick = 0.0f;
 		// Send position data
 		NetMessage sendData;
-		sendData.positionX = test.getPosition().x;
-		sendData.positionY = test.getPosition().y;
+		sendData.messageType = MessageType::Position;
+		sendData.enemyID = localIdentity;//localPlayer.playerID;
+		sendData.positionX = localPlayer.getPosition().x;
+		sendData.positionY = localPlayer.getPosition().y;
 		sendData.mousePosX = MousePos.x;
 		sendData.mousePosY = MousePos.y;
 		sendData.time = totalTime;
 
-		sf::Packet posPack;
-		posPack
+		sf::Packet packetInfo;
+		packetInfo
 			<< sendData.messageType
+			<< sendData.enemyID
 			<< sendData.positionX
 			<< sendData.positionY
 			<< sendData.mousePosX
 			<< sendData.mousePosY
 			<< sendData.time;
 
-		// Simulate packet drop
-		// Lose 40% of packets
-		if ((rand() % 100) > 20)
-		{
-			if (sock.send(posPack, serverAddr, serverport) != sf::Socket::Done) {
-				printf("Data send failed\n");
-			}
-		}
+		sendMessage(packetInfo, serverAddr, serverPort);
 
 	}
 
-	test.update(deltaTime);
+	localPlayer.update(deltaTime);
 
 	sf::Vector2f direction = MousePos;
-	direction -= test.getPosition();
+	direction -= localPlayer.getPosition();
 
-	sf::Vector2f collisionPos = HitScan(test.getPosition(), MousePos, collider);
+	sf::Vector2f collisionPos = HitScan(localPlayer.getPosition(), MousePos, collider);
 
-	hitScanLine[0].position = test.getPosition();
+	hitScanLine[0].position = localPlayer.getPosition();
 	hitScanLine[1].position = MousePos;
 
 	if (collisionPos.x > 0) {
@@ -133,10 +114,10 @@ void Game::update(float deltaTime)
 void Game::handleInput(Input* input)
 {
 	if (input->isKeyDown(sf::Keyboard::W)) {
-		test.setVelocity({ test.getVelocity().x,test.getVelocity().y - 5 / 64.f });
+		localPlayer.setVelocity({ localPlayer.getVelocity().x,localPlayer.getVelocity().y - 5 / 64.f });
 	}
 	else if (input->isKeyDown(sf::Keyboard::S)) {
-		test.setVelocity({ test.getVelocity().x,test.getVelocity().y + 5 / 64.f });
+		localPlayer.setVelocity({ localPlayer.getVelocity().x,localPlayer.getVelocity().y + 5 / 64.f });
 	}
 	else {
 		//test.setVelocity({ test.getVelocity().x,0 });
@@ -144,10 +125,10 @@ void Game::handleInput(Input* input)
 	}
 
 	if (input->isKeyDown(sf::Keyboard::A)) {
-		test.setVelocity({ test.getVelocity().x - 5 / 64.f,test.getVelocity().y });
+		localPlayer.setVelocity({ localPlayer.getVelocity().x - 5 / 64.f,localPlayer.getVelocity().y });
 	}
 	else if (input->isKeyDown(sf::Keyboard::D)) {
-		test.setVelocity({ test.getVelocity().x + 5 / 64.f,test.getVelocity().y });
+		localPlayer.setVelocity({ localPlayer.getVelocity().x + 5 / 64.f,localPlayer.getVelocity().y });
 	}
 	else {
 		//test.setVelocity({ 0,test.getVelocity().y });
@@ -171,7 +152,12 @@ void Game::render()
 {
 	beginDraw();
 
-	window->draw(test);
+	window->draw(localPlayer);
+
+	for (auto enemy : enemies) {
+		window->draw(*enemy);
+	}
+
 	window->draw(collider);
 	window->draw(hitScanLine);
 
@@ -302,4 +288,152 @@ void Game::renderUI() {
 
 void Game::reset() {
 
+}
+
+void Game::processMessage(sf::Packet _packet)
+{
+	int messageType;
+
+	_packet >> messageType;
+	sf::Packet pingPack;
+	SetUpMessage pingMessage;
+
+	switch (messageType) {
+	case MessageType::PingRequest:
+
+		float messageTime;
+		_packet >> messageTime;
+
+		pingMessage.pingType = MessageType::PingInfo;
+		pingPack
+			<< MessageType::PingInfo
+			<< messageTime
+			<< totalTime;
+
+		if (localSock.send(pingPack, serverAddr, serverPort) != sf::Socket::Done) {
+			printf("Data send failed\n");
+		}
+		break;
+
+	case MessageType::PingInfo:
+
+		pingMessage.pingType = messageType;
+
+		_packet
+			>> pingMessage.time
+			>> pingMessage.totalTime
+			>> pingMessage.playerIdentity;
+
+		if (localIdentity < 0) {
+			localIdentity = pingMessage.playerIdentity;
+		}
+
+		latency = (totalTime - pingMessage.time);
+		totalTime = pingMessage.totalTime;
+		printf("Latency: %f\n", latency);
+		break;
+
+	case MessageType::Position:
+
+		//NetMessage incomingPosition;
+		//incomingPosition.messageType = messageType;
+
+		//_packet
+		//	<< incomingPosition.enemyID
+		//	<< incomingPosition.positionX
+		//	<< incomingPosition.positionY
+		//	<< incomingPosition.mousePosX
+		//	<< incomingPosition.mousePosY
+		//	<< incomingPosition.time;
+
+		//for (auto enemy : enemies) {
+		//	if (enemy->playerID == incomingPosition.enemyID) {
+		//		
+		//		enemy->setPosition(incomingPosition.positionX, incomingPosition.positionY);
+		//		break;
+		//	}
+		//}
+
+		//// New enemy info received
+
+		//Player* newEnemy = new Player();
+		//
+		//newEnemy->setTexture(enemyTexture);
+		//newEnemy->setPosition(incomingPosition.positionX, incomingPosition.positionY);
+
+		//enemies.push_back(newEnemy);
+
+		break;
+
+	case MessageType::PlayerPositions:
+		int playerCount;
+
+		_packet >> playerCount;
+
+		for (int i = 0; i < playerCount; i++) {
+			
+			PlayerInfo enemyInfo;
+
+			bool found = false;
+			_packet >> enemyInfo.playerID;
+			_packet >> enemyInfo.positionX;
+			_packet >> enemyInfo.positionY;
+
+			if (enemyInfo.playerID == localIdentity || localIdentity == -1) {
+				continue;
+			}
+
+			for (auto enemy : enemies) {
+				if (enemy->playerID == enemyInfo.playerID) {
+					enemy->setPosition(enemyInfo.positionX, enemyInfo.positionY);
+					found = true;
+				}
+			}
+
+			if (!found) {
+				Player* newEnemy = new Player();
+
+				newEnemy->setTexture(enemyTexture);
+				newEnemy->playerID = enemyInfo.playerID;
+				newEnemy->setPosition(enemyInfo.positionX, enemyInfo.positionY);
+
+				enemies.push_back(newEnemy);
+			}
+
+		}
+
+		break;
+
+	}
+}
+
+void Game::sendMessage(sf::Packet _packet, sf::IpAddress _destAddr, unsigned short _destPort)
+{
+	// Simulate packet drop
+	// Lose 40% of packets
+	if ((rand() % 100) > 20)
+	{
+		if (localSock.send(_packet, _destAddr, _destPort) != sf::Socket::Done) {
+			printf("Data send failed\n");
+		}
+	}
+}
+
+void Game::pingServer(sf::UdpSocket* _sock, sf::IpAddress _addr, unsigned short _port)
+{
+	sf::Packet pingInfo;
+	SetUpMessage pingMsg;
+
+	pingMsg.pingType = MessageType::PingRequest;
+	pingMsg.time = totalTime;
+	pingMsg.totalTime = totalTime;
+	pingMsg.playerIdentity = localIdentity;
+
+	pingInfo << pingMsg.pingType << pingMsg.time << pingMsg.totalTime << pingMsg.playerIdentity;
+
+	if (_sock->send(pingInfo, _addr, _port) != sf::Socket::Done) {
+		printf("Ping send failed\n");
+	}
+
+	return;
 }

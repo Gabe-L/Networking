@@ -1,9 +1,11 @@
 #pragma once
 #include <SFML/Graphics.hpp>
-#include <SFML\Network.hpp>
 #include <Windows.h>
 #include "Input.h"
 #include "Player.h"
+#include <SFML/Network.hpp>
+#include <vector>
+#include <cassert>
 #include "protocol.h"
 
 using namespace std;
@@ -30,28 +32,32 @@ private:
 	void endDraw();
 	void renderUI();
 	void reset();
+	void predictPosition(float time);
+	void pingServer(sf::UdpSocket* _sock, sf::IpAddress _addr, unsigned short _port);
 
 	// #TODO: Clear test vars
 	Player test;
 	sf::Texture tst;
 	sf::Sprite collider;
 
+	sf::VertexArray hitScanLine;
+	sf::Color lineColour;
+	
+	sf::Vector2f MousePos;
+
+	std::vector<NetMessage> messsageHistory;
+
+	float totalTime;
+	float tick;
+	float latency;
+
 	sf::UdpSocket sock;
 
 	sf::IpAddress addr;
 	unsigned short port;
 
-	sf::IpAddress serverAddr;
-	unsigned short serverport;
-	bool clicked;
-
-	float tick;
-	float totalTime;
-
-	sf::VertexArray hitScanLine;
-	sf::Color lineColour;
-	
-	sf::Vector2f MousePos;
+	sf::IpAddress clientAddr;
+	unsigned short clientport;
 
 };
 

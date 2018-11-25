@@ -14,104 +14,132 @@ Game::Game(sf::RenderWindow* hwnd)
 	collider.setTexture(tst);
 	collider.setPosition(window->getSize().x / 2, window->getSize().y / 2);
 
-
-	tick = 0.f;
-	totalTime = 0.0f;
-
 	hitScanLine = sf::VertexArray(sf::LinesStrip, 2);
 	lineColour = sf::Color::White;
 
-	addr = "127.0.0.1";
-	port = 256;
+	totalTime = 0.0f;
+	tick = 0.0f;
 
-	serverAddr = "127.0.0.1";
-	serverport = 255;
-	clicked = false;
+	addr = "127.0.0.1";
+	port = 255;
+	
+	clientAddr = "127.0.0.1";
+	clientport = 256;
+	sock.setBlocking(false);
 
 	if (sock.bind(port, addr) != sf::Socket::Done)
 	{
 		std::printf("Socket did not bind\n");
 	}
-
-	sock.setBlocking(false);
-
+	latency = 0.0f;
 
 }
 Game::~Game()
 {
 }
 
+void Game::predictPosition(float time) {
+	const int msize = messsageHistory.size();
+	assert(msize >= 3);
+	const NetMessage& msg0 = messsageHistory[msize - 1];
+	const NetMessage& msg1 = messsageHistory[msize - 2];
+	const NetMessage& msg2 = messsageHistory[msize - 3];
+
+	float x_acc, y_acc;
+	float x_v = 0.f, y_v = 0.f;
+	float x_u = 0.f, y_u = 0.f;
+
+	float timePassed = msg0.time - msg1.time;
+
+	x_v = (msg0.positionX - msg1.positionX) / timePassed;
+	y_v = (msg0.positionY - msg1.positionY) / timePassed;
+
+	timePassed = msg1.time - msg2.time;
+
+	x_u = (msg1.positionX - msg2.positionX) / timePassed;
+	y_u = (msg1.positionY - msg2.positionY) / timePassed;
+
+	x_acc = x_v - x_u;
+	y_acc = y_v - y_u;
+
+	x_acc /= time - msg2.time;
+	y_acc /= time - msg2.time;
+
+	// Displacement
+	// s = ut + 0.5 * at ^2
+
+	float x_disp = 0.f;
+	timePassed = time - msg0.time;
+
+	x_disp += x_u * timePassed;
+	x_disp += 0.5 * pow(x_acc * timePassed, 2);
+
+	float y_disp = 0.f;
+	timePassed = time - msg0.time;
+
+	y_disp += y_u * timePassed;
+	y_disp += 0.5 * pow(y_acc * timePassed, 2);
+
+	test.setPosition(sf::Vector2f(msg0.positionX + x_disp, msg0.positionY + y_disp));
+
+}
+
 void Game::update(float deltaTime)
 {
-	tick += deltaTime;
-	totalTime += deltaTime;
 
-	
-	sf::Packet ipPack;
+	//test.update(deltaTime);
+
+	sf::Vector2f newPos;
+
+	//size_t dataSize = sizeof(newPos);
+	sf::Packet posPack;
+
 	sf::IpAddress recvAddr;
 	unsigned short recvPort;
 
-	if (sock.receive(ipPack, recvAddr, recvPort) == sf::Socket::Done)
+	totalTime += deltaTime;
+	tick += deltaTime;
+
+	if (messsageHistory.size() >= 3) {
+		predictPosition(totalTime + latency);
+		if (tick >= 1.f /64)
+		{
+			tick = 0.0f;
+			pingServer(&sock, clientAddr, clientport);
+		}
+	}
+
+	if (sock.receive(posPack, recvAddr, recvPort) == sf::Socket::Done)
 	{
 
 		int messageType;
+		NetMessage recvMessage;
+		SetUpMessage pingMessage;
 
-		ipPack >> messageType;
+		posPack >> messageType;
 		switch (messageType) {
-		case MessageType::PingRequest:
-			SetUpMessage pingMessage;
+		case MessageType::Position:
 
-			float messageTime;
-			ipPack >> messageTime;
+			posPack
+				>> recvMessage.positionX
+				>> recvMessage.positionY
+				>> recvMessage.mousePosX
+				>> recvMessage.mousePosY
+				>> recvMessage.time;
 
-			pingMessage.pingType = MessageType::PingInfo;
-			sf::Packet pingPack;
-			pingPack
-				<< MessageType::PingInfo
-				<< messageTime
-				<< totalTime;
-
-			if (sock.send(pingPack, serverAddr, serverport) != sf::Socket::Done) {
-				printf("Data send failed\n");
-			}
-
+			messsageHistory.push_back(recvMessage);
+			break;
+		case MessageType::PingInfo:
+			posPack
+				>> pingMessage.time
+				>> pingMessage.totalTime;
+			latency = (totalTime - pingMessage.time);
+			totalTime = pingMessage.totalTime;
+			printf("Latency: %f\n", latency);
 			break;
 		}
 
 	}
-
-	if (tick >= 1.f / 64)
-	{
-		tick = 0.0f;
-		// Send position data
-		NetMessage sendData;
-		sendData.positionX = test.getPosition().x;
-		sendData.positionY = test.getPosition().y;
-		sendData.mousePosX = MousePos.x;
-		sendData.mousePosY = MousePos.y;
-		sendData.time = totalTime;
-
-		sf::Packet posPack;
-		posPack
-			<< sendData.messageType
-			<< sendData.positionX
-			<< sendData.positionY
-			<< sendData.mousePosX
-			<< sendData.mousePosY
-			<< sendData.time;
-
-		// Simulate packet drop
-		// Lose 40% of packets
-		if ((rand() % 100) > 20)
-		{
-			if (sock.send(posPack, serverAddr, serverport) != sf::Socket::Done) {
-				printf("Data send failed\n");
-			}
-		}
-
-	}
-
-	test.update(deltaTime);
 
 	sf::Vector2f direction = MousePos;
 	direction -= test.getPosition();
@@ -122,8 +150,7 @@ void Game::update(float deltaTime)
 	hitScanLine[1].position = MousePos;
 
 	if (collisionPos.x > 0) {
-		hitScanLine[1].position = collisionPos;
-		MousePos = collisionPos;
+		//hitScanLine[1].position = collisionPos;
 	}
 
 	hitScanLine[0].color = lineColour;
@@ -133,34 +160,32 @@ void Game::update(float deltaTime)
 void Game::handleInput(Input* input)
 {
 	if (input->isKeyDown(sf::Keyboard::W)) {
-		test.setVelocity({ test.getVelocity().x,test.getVelocity().y - 5 / 64.f });
+		test.setVelocity({ test.getVelocity().x,-100 });
 	}
 	else if (input->isKeyDown(sf::Keyboard::S)) {
-		test.setVelocity({ test.getVelocity().x,test.getVelocity().y + 5 / 64.f });
+		test.setVelocity({ test.getVelocity().x,100 });
 	}
 	else {
-		//test.setVelocity({ test.getVelocity().x,0 });
+		test.setVelocity({ test.getVelocity().x,0 });
 
 	}
 
 	if (input->isKeyDown(sf::Keyboard::A)) {
-		test.setVelocity({ test.getVelocity().x - 5 / 64.f,test.getVelocity().y });
+		test.setVelocity({ -100,test.getVelocity().y });
 	}
 	else if (input->isKeyDown(sf::Keyboard::D)) {
-		test.setVelocity({ test.getVelocity().x + 5 / 64.f,test.getVelocity().y });
+		test.setVelocity({ 100,test.getVelocity().y });
 	}
 	else {
-		//test.setVelocity({ 0,test.getVelocity().y });
+		test.setVelocity({ 0,test.getVelocity().y });
 	}
 
 
 	if (input->isLmbDown()) {
 		lineColour = sf::Color::Red;
-		clicked = true;
 	}
 	else {
 		lineColour = sf::Color::White;
-		clicked = false;
 	}
 
 	MousePos.x = input->getMouseX();

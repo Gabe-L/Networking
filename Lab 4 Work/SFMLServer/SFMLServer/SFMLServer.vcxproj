@@ -20,8 +20,8 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
-    <ProjectGuid>{BE828C7B-14FC-4FA9-A166-15EB70F16C2A}</ProjectGuid>
-    <RootNamespace>SFMLNetworkGame</RootNamespace>
+    <ProjectGuid>{8BEAB7B1-1ED0-4C0E-9627-BEBAA14A073B}</ProjectGuid>
+    <RootNamespace>SFMLServer</RootNamespace>
     <WindowsTargetPlatformVersion>10.0.17134.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -115,21 +115,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Connection.cpp" />
-    <ClCompile Include="Game.cpp" />
-    <ClCompile Include="Input.cpp" />
-    <ClCompile Include="Player.cpp" />
-    <ClCompile Include="Source.cpp" />
-  </ItemGroup>
-  <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Connection.h" />
-    <ClInclude Include="Game.h" />
-    <ClInclude Include="Input.h" />
-    <ClInclude Include="Player.h" />
-    <ClInclude Include="protocol.h" />
+    <ClCompile Include="SFMLServer.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
