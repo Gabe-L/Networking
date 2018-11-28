@@ -56,7 +56,7 @@ void Tank::predict_position(float time) {
 	timePassed = time - msg0.time;
 
 	x_disp += x_u * timePassed;
-	x_disp += 0.5 * pow(x_acc * timePassed, 2);
+	x_disp += 0.5 * x_acc * pow(timePassed, 2);
 
 	x_ = msg0.x + x_disp;
 

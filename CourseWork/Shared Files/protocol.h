@@ -49,6 +49,7 @@ struct PlayerInfo {
 	int playerID;
 	float positionX;
 	float positionY;
+	float time;
 };
 
 struct NetMessage {

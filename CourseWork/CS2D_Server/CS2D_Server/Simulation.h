@@ -14,6 +14,7 @@ public:
 private:
 
 	float serverTime;
+	float tick;
 	std::vector<ClientConnection*> players;
 
 	// Server network info

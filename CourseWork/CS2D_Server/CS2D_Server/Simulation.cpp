@@ -2,7 +2,7 @@
 #include "Simulation.h"
 
 
-Simulation::Simulation() : serverTime(0.0f)
+Simulation::Simulation() : serverTime(0.0f), tick(0.0f)
 {
 	serverIp = "127.0.0.1";
 	serverPort = 255;
@@ -23,10 +23,13 @@ Simulation::~Simulation()
 bool Simulation::update(float deltaTime)
 {
 	serverTime += deltaTime;
+	tick += deltaTime;
 
 	// Update server 64 times per second
-	if (serverTime >= 1 / 64.f) {
-
+	if (tick >= 1 / 64.f)
+	{
+		std::printf("Time: %.2f\n", serverTime);
+		tick = 0.0f;
 		sf::Packet playersInfo;
 
 		PlayerCount playerCount;
@@ -38,9 +41,14 @@ bool Simulation::update(float deltaTime)
 			PlayerInfo playerInfo;
 			playerInfo.playerID = player->identity;
 			playerInfo.positionX = player->position.x;
-			playerInfo.positionY = player->position.x;
+			playerInfo.positionY = player->position.y;
+			playerInfo.time = player->remoteTime;
 
-			playersInfo << playerInfo.playerID << playerInfo.positionX << playerInfo.positionX;
+			playersInfo 
+				<< playerInfo.playerID
+				<< playerInfo.positionX
+				<< playerInfo.positionY
+				<< playerInfo.time;
 
 		}
 
@@ -81,7 +89,8 @@ bool Simulation::update(float deltaTime)
 
 			for (auto player : players) {
 				if (player->identity == clientInfo.enemyID) {
-					player->position = sf::Vector2f(clientInfo.positionX, clientInfo.positionX);
+					player->position = sf::Vector2f(clientInfo.positionX, clientInfo.positionY);
+					player->remoteTime = clientInfo.time;
 					break;
 				}
 			}

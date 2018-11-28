@@ -20,6 +20,7 @@ public:
 
 private:
 	sf::RenderWindow* window;
+	void predictPosition(float time, Player* enemy);
 	bool checkCollision(sf::Sprite* s1, sf::Sprite* s2);
 	sf::Vector2f checkLineCollision(sf::Vector2f originOne, sf::Vector2f pointOne, sf::Vector2f originTwo, sf::Vector2f pointTwo);
 	sf::Vector2f HitScan(sf::Vector2f lineOrigin, sf::Vector2f lineEnd, sf::Sprite sprite);

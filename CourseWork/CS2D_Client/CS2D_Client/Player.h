@@ -1,6 +1,7 @@
 #pragma once
 #include "pch.h"
 
+
 class Player : public sf::Sprite
 {
 public:
@@ -14,6 +15,7 @@ public:
 	sf::Vector2f getVelocity();
 
 	int playerID;
+	std::vector<PlayerInfo> messageHistory;
 
 protected:
 	sf::Vector2f velocity;

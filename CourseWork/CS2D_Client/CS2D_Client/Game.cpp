@@ -60,13 +60,19 @@ void Game::update(float deltaTime)
 	sf::IpAddress recvAddr;
 	unsigned short recvPort;
 
+
 	if (localSock.receive(ipPack, recvAddr, recvPort) == sf::Socket::Done)
 	{
 		processMessage(ipPack);
 	}
 
+	for (auto enemy : enemies) {
+		predictPosition(totalTime + latency, enemy);
+	}
+
 	if (tick >= 1.f / 64)
 	{
+		std::printf("Time: %.2f\n", totalTime);
 		tick = 0.0f;
 		// Send position data
 		NetMessage sendData;
@@ -163,6 +169,56 @@ void Game::render()
 
 	renderUI();
 	endDraw();
+}
+
+void Game::predictPosition(float time, Player* enemy) {
+
+	const int msize = enemy->messageHistory.size();
+	if (msize < 3) {
+		return;
+	}
+	//assert(msize >= 3);
+	const PlayerInfo& msg0 = enemy->messageHistory[msize - 1];
+	const PlayerInfo& msg1 = enemy->messageHistory[msize - 2];
+	const PlayerInfo& msg2 = enemy->messageHistory[msize - 3];
+
+	float x_acc, y_acc;
+	float x_v = 0.f, y_v = 0.f;
+	float x_u = 0.f, y_u = 0.f;
+
+	float timePassed = msg0.time - msg1.time;
+
+	x_v = (msg0.positionX - msg1.positionX) / timePassed;
+	y_v = (msg0.positionY - msg1.positionY) / timePassed;
+
+	timePassed = msg1.time - msg2.time;
+
+	x_u = (msg1.positionX - msg2.positionX) / timePassed;
+	y_u = (msg1.positionY - msg2.positionY) / timePassed;
+
+	x_acc = x_v - x_u;
+	y_acc = y_v - y_u;
+
+	x_acc /= msg0.time - msg2.time;
+	y_acc /= msg0.time - msg2.time;
+
+	// Displacement
+	// s = ut + 0.5 * at ^2
+
+	float x_disp = 0.f;
+	timePassed = time - msg0.time;
+
+	x_disp += x_u * timePassed;
+	x_disp += 0.5 * (x_acc * pow( timePassed, 2));
+
+	float y_disp = 0.f;
+	timePassed = time - msg0.time;
+
+	y_disp += y_u * timePassed;
+	y_disp += 0.5 * (y_acc *  pow(timePassed, 2));
+
+	enemy->setPosition(sf::Vector2f(msg0.positionX + x_disp, msg0.positionY + y_disp));
+
 }
 
 bool Game::checkCollision(sf::Sprite* s1, sf::Sprite* s2)
@@ -329,7 +385,7 @@ void Game::processMessage(sf::Packet _packet)
 		}
 
 		latency = (totalTime - pingMessage.time);
-		totalTime = pingMessage.totalTime;
+		totalTime = pingMessage.totalTime +latency;
 		printf("Latency: %f\n", latency);
 		break;
 
@@ -378,6 +434,7 @@ void Game::processMessage(sf::Packet _packet)
 			_packet >> enemyInfo.playerID;
 			_packet >> enemyInfo.positionX;
 			_packet >> enemyInfo.positionY;
+			_packet >> enemyInfo.time;
 
 			if (enemyInfo.playerID == localIdentity || localIdentity == -1) {
 				continue;
@@ -385,7 +442,9 @@ void Game::processMessage(sf::Packet _packet)
 
 			for (auto enemy : enemies) {
 				if (enemy->playerID == enemyInfo.playerID) {
-					enemy->setPosition(enemyInfo.positionX, enemyInfo.positionY);
+					//enemy->setPosition(enemyInfo.positionX, enemyInfo.positionY);
+					enemy->messageHistory.push_back(enemyInfo);
+					
 					found = true;
 				}
 			}
@@ -395,6 +454,8 @@ void Game::processMessage(sf::Packet _packet)
 
 				newEnemy->setTexture(enemyTexture);
 				newEnemy->playerID = enemyInfo.playerID;
+				newEnemy->OriginToCentre();
+				newEnemy->setScale(0.5f, 0.5f);
 				newEnemy->setPosition(enemyInfo.positionX, enemyInfo.positionY);
 
 				enemies.push_back(newEnemy);
@@ -411,7 +472,7 @@ void Game::sendMessage(sf::Packet _packet, sf::IpAddress _destAddr, unsigned sho
 {
 	// Simulate packet drop
 	// Lose 40% of packets
-	if ((rand() % 100) > 20)
+	//if ((rand() % 100) > 40)
 	{
 		if (localSock.send(_packet, _destAddr, _destPort) != sf::Socket::Done) {
 			printf("Data send failed\n");
