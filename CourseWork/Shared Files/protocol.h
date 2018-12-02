@@ -1,33 +1,59 @@
 #pragma once
 
 enum MessageType {
-	Setup,
 	Position,
 	PingRequest,
 	PingInfo,
-	PlayerPositions
+	PlayerPositions,
+	Shot,
+	Terminate
 };
 
 struct BaseMessage {
 	int messageType;
 
 	BaseMessage() :
-		messageType(0)
+		messageType(-1)
 	{
 	}
 };
 
-struct SetUpMessage {
-	int pingType;
+struct ShotMessage : BaseMessage {
+	float fromX;
+	float fromY;
+	float toX;
+	float toY;
+
+	ShotMessage(float _fromX, float _fromY, float _toX, float _toY):
+		fromX(_fromX),
+		fromY(_fromY),
+		toX(_toX),
+		toY(_toY)
+	{
+		messageType = MessageType::Shot;
+	}
+};
+
+struct TerminateMessage : BaseMessage{
+	TerminateMessage()
+	{
+		messageType = MessageType::Terminate;
+	}
+};
+
+struct SetUpMessage : BaseMessage {
 	float time;
 	float totalTime;
 	int playerIdentity;
 
-	SetUpMessage() :
-		pingType(MessageType::Setup),
-		time(0.0f),
-		totalTime(0.0f),
-		playerIdentity(-1)
+	SetUpMessage()
+	{
+	}
+
+	SetUpMessage(float _time, float _totalTime, int _playerIdentity) :
+		time(_time),
+		totalTime(_totalTime),
+		playerIdentity(_playerIdentity)
 	{
 	}
 
@@ -52,8 +78,7 @@ struct PlayerInfo {
 	float time;
 };
 
-struct NetMessage {
-	int messageType;
+struct ClientInfo : BaseMessage {
 	int enemyID;
 	float positionX;
 	float positionY;
@@ -61,14 +86,18 @@ struct NetMessage {
 	float mousePosY;
 	float time;
 
-	NetMessage() :
-		messageType(MessageType::Position),
-		enemyID(-1),
-		positionX(-1.0f),
-		positionY(-1.0f),
-		mousePosX(-1.0f),
-		mousePosY(-1.0f),
-		time(-1.0f)
+	ClientInfo()
 	{
+	}
+
+	ClientInfo(int _enemyID, float _positionX, float _positionY, float _mousePosX, float mousePosY, float _time) :
+		enemyID(_enemyID),
+		positionX(_positionX),
+		positionY(_positionY),
+		mousePosX(_mousePosX),
+		mousePosY(mousePosY),
+		time(_time)
+	{
+		messageType = MessageType::Position;
 	}
 };

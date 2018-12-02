@@ -9,6 +9,10 @@ Game::Game(sf::RenderWindow* hwnd)
 	// Setup player
 	playerTexture.loadFromFile("gfx/playerSprite.png");
 	enemyTexture.loadFromFile("gfx/enemySprite.png");
+	
+	mapTexture.loadFromFile("gfx/dust2.jpg");
+	map.setTexture(mapTexture);
+	map.setScale(2.0f, 2.0f);
 
 	localPlayer.setTexture(playerTexture);
 	localPlayer.OriginToCentre();
@@ -47,6 +51,12 @@ Game::Game(sf::RenderWindow* hwnd)
 }
 Game::~Game()
 {
+	TerminateMessage termMsg;
+	sf::Packet termPack;
+	termPack << termMsg.messageType;
+
+	sendMessage(termPack, serverAddr, serverPort);
+
 }
 
 void Game::update(float deltaTime)
@@ -54,7 +64,6 @@ void Game::update(float deltaTime)
 	
 	tick += deltaTime;
 	totalTime += deltaTime;
-
 
 	sf::Packet ipPack;
 	sf::IpAddress recvAddr;
@@ -67,35 +76,10 @@ void Game::update(float deltaTime)
 	}
 
 	for (auto enemy : enemies) {
-		predictPosition(totalTime + latency, enemy);
-	}
-
-	if (tick >= 1.f / 64)
-	{
-		std::printf("Time: %.2f\n", totalTime);
-		tick = 0.0f;
-		// Send position data
-		NetMessage sendData;
-		sendData.messageType = MessageType::Position;
-		sendData.enemyID = localIdentity;//localPlayer.playerID;
-		sendData.positionX = localPlayer.getPosition().x;
-		sendData.positionY = localPlayer.getPosition().y;
-		sendData.mousePosX = MousePos.x;
-		sendData.mousePosY = MousePos.y;
-		sendData.time = totalTime;
-
-		sf::Packet packetInfo;
-		packetInfo
-			<< sendData.messageType
-			<< sendData.enemyID
-			<< sendData.positionX
-			<< sendData.positionY
-			<< sendData.mousePosX
-			<< sendData.mousePosY
-			<< sendData.time;
-
-		sendMessage(packetInfo, serverAddr, serverPort);
-
+		int xpos = enemy->getPosition().x;
+		if (enemy->messageHistory.size() >= 3) {
+			predictPosition(totalTime + (latency), enemy);
+		}
 	}
 
 	localPlayer.update(deltaTime);
@@ -103,7 +87,12 @@ void Game::update(float deltaTime)
 	sf::Vector2f direction = MousePos;
 	direction -= localPlayer.getPosition();
 
-	sf::Vector2f collisionPos = HitScan(localPlayer.getPosition(), MousePos, collider);
+	//sf::Vector2f collisionPos = HitScan(localPlayer.getPosition(), MousePos, collider);
+	sf::Vector2f collisionPos(-1, -1);
+
+	for (auto enemy : enemies) {
+		collisionPos = HitScan(localPlayer.getPosition(), MousePos, *enemy);
+	}
 
 	hitScanLine[0].position = localPlayer.getPosition();
 	hitScanLine[1].position = MousePos;
@@ -116,30 +105,76 @@ void Game::update(float deltaTime)
 	hitScanLine[0].color = lineColour;
 	hitScanLine[1].color = lineColour;
 
-}
-void Game::handleInput(Input* input)
-{
-	if (input->isKeyDown(sf::Keyboard::W)) {
-		localPlayer.setVelocity({ localPlayer.getVelocity().x,localPlayer.getVelocity().y - 5 / 64.f });
+	if (tick >= 1.f / 64)
+	{
+		tickCount++;
+
+		/*if (tickCount % (64 * 60) == 0) {
+			printf("60 seconds have passed, pinging\n");
+			pingServer(&localSock, serverAddr, serverPort);
+		}*/
+
+		//std::printf("Time: %.2f\n", totalTime);
+		tick = 0.0f;
+		// Send position data
+		ClientInfo sendData(localIdentity, localPlayer.getPosition().x, localPlayer.getPosition().y, -1.0f, -1.0f, totalTime);
+
+		if (clicked) {
+			sendData.mousePosX = MousePos.x;
+			sendData.mousePosY = MousePos.y;
+		}
+
+		if (sendData.time != previousTimeSend) {
+			previousTimeSend = sendData.time;
+			sf::Packet packetInfo;
+			packetInfo
+				<< sendData.messageType
+				<< sendData.enemyID
+				<< sendData.positionX
+				<< sendData.positionY
+				<< sendData.mousePosX
+				<< sendData.mousePosY
+				<< sendData.time;
+
+			sendMessage(packetInfo, serverAddr, serverPort);
+		}
 	}
-	else if (input->isKeyDown(sf::Keyboard::S)) {
-		localPlayer.setVelocity({ localPlayer.getVelocity().x,localPlayer.getVelocity().y + 5 / 64.f });
+
+}
+void Game::handleInput(Input* input, float dt)
+{
+	if (input->isKeyDown(sf::Keyboard::W) && localPlayer.getVelocity().y > -200) {
+		
+		float velMod = localPlayer.getVelocity().y > 0 ? 4 : 1;
+
+		localPlayer.setVelocity({ localPlayer.getVelocity().x,localPlayer.getVelocity().y - 200 * dt * velMod });
+	}
+	else if (input->isKeyDown(sf::Keyboard::S) && localPlayer.getVelocity().y < 200) {
+
+		float velMod = localPlayer.getVelocity().y < 0 ? 4 : 1;
+
+		localPlayer.setVelocity({ localPlayer.getVelocity().x,localPlayer.getVelocity().y + 200 * dt * velMod});
 	}
 	else {
 		//test.setVelocity({ test.getVelocity().x,0 });
 
 	}
 
-	if (input->isKeyDown(sf::Keyboard::A)) {
-		localPlayer.setVelocity({ localPlayer.getVelocity().x - 5 / 64.f,localPlayer.getVelocity().y });
+	if (input->isKeyDown(sf::Keyboard::A) && localPlayer.getVelocity().x > -200) {
+
+		float velMod = localPlayer.getVelocity().x > 0 ? 4 : 1;
+
+		localPlayer.setVelocity({ localPlayer.getVelocity().x - 200 * dt * velMod,localPlayer.getVelocity().y });
 	}
-	else if (input->isKeyDown(sf::Keyboard::D)) {
-		localPlayer.setVelocity({ localPlayer.getVelocity().x + 5 / 64.f,localPlayer.getVelocity().y });
+	else if (input->isKeyDown(sf::Keyboard::D) && localPlayer.getVelocity().x < 200) {
+		
+		float velMod = localPlayer.getVelocity().x < 0 ? 4 : 1;
+
+		localPlayer.setVelocity({ localPlayer.getVelocity().x + 200 * dt * velMod,localPlayer.getVelocity().y });
 	}
 	else {
 		//test.setVelocity({ 0,test.getVelocity().y });
 	}
-
 
 	if (input->isLmbDown()) {
 		lineColour = sf::Color::Red;
@@ -157,6 +192,8 @@ void Game::handleInput(Input* input)
 void Game::render()
 {
 	beginDraw();
+	
+	window->draw(map);
 
 	window->draw(localPlayer);
 
@@ -173,6 +210,7 @@ void Game::render()
 
 void Game::predictPosition(float time, Player* enemy) {
 
+
 	const int msize = enemy->messageHistory.size();
 	if (msize < 3) {
 		return;
@@ -181,26 +219,60 @@ void Game::predictPosition(float time, Player* enemy) {
 	const PlayerInfo& msg0 = enemy->messageHistory[msize - 1];
 	const PlayerInfo& msg1 = enemy->messageHistory[msize - 2];
 	const PlayerInfo& msg2 = enemy->messageHistory[msize - 3];
+	
+	// Linear
+	
+	/*float timePassed = msg0.time - msg1.time;
+	if (timePassed == 0.0f) { return; }
 
+
+	float x_speed = (msg0.positionX - msg1.positionX) / timePassed;
+	float y_speed = (msg0.positionY - msg1.positionY) / timePassed;
+
+	timePassed = time - msg0.time;
+	if (timePassed == 0.0f) { return; }
+
+	enemy->setPosition(sf::Vector2f(msg0.positionX + (x_speed * timePassed), msg0.positionY + (y_speed * timePassed)));*/
+
+	// Quadratic
 	float x_acc, y_acc;
 	float x_v = 0.f, y_v = 0.f;
 	float x_u = 0.f, y_u = 0.f;
 
 	float timePassed = msg0.time - msg1.time;
 
-	x_v = (msg0.positionX - msg1.positionX) / timePassed;
-	y_v = (msg0.positionY - msg1.positionY) / timePassed;
-
+	if (timePassed != 0.0f) {
+		x_v = (msg0.positionX - msg1.positionX) / timePassed;
+		y_v = (msg0.positionY - msg1.positionY) / timePassed;
+	}
+	else {
+		x_v = 0.0f;
+		y_v = 0.0f;
+	}
 	timePassed = msg1.time - msg2.time;
 
-	x_u = (msg1.positionX - msg2.positionX) / timePassed;
-	y_u = (msg1.positionY - msg2.positionY) / timePassed;
+	if (timePassed != 0.0f) {
+		x_u = (msg1.positionX - msg2.positionX) / timePassed;
+		y_u = (msg1.positionY - msg2.positionY) / timePassed;
+	}
+	else {
+		x_u = 0.0f;
+		y_u = 0.0f;
+	}
+
 
 	x_acc = x_v - x_u;
 	y_acc = y_v - y_u;
 
-	x_acc /= msg0.time - msg2.time;
-	y_acc /= msg0.time - msg2.time;
+	if (msg0.time - msg2.time != 0.0f) {
+		x_acc /= msg0.time - msg2.time;
+		y_acc /= msg0.time - msg2.time;
+	}
+	else {
+		x_acc = 0.0f;
+		y_acc = 0.0f;
+	}
+
 
 	// Displacement
 	// s = ut + 0.5 * at ^2
@@ -209,16 +281,17 @@ void Game::predictPosition(float time, Player* enemy) {
 	timePassed = time - msg0.time;
 
 	x_disp += x_u * timePassed;
-	x_disp += 0.5 * (x_acc * pow( timePassed, 2));
+	x_disp += 0.5 * (x_acc * pow(timePassed, 2));
 
 	float y_disp = 0.f;
 	timePassed = time - msg0.time;
 
 	y_disp += y_u * timePassed;
-	y_disp += 0.5 * (y_acc *  pow(timePassed, 2));
+	y_disp += 0.5 * (y_acc * pow(timePassed, 2));
 
-	enemy->setPosition(sf::Vector2f(msg0.positionX + x_disp, msg0.positionY + y_disp));
-
+	if (x_disp && y_disp) {
+		enemy->setPosition(sf::Vector2f(msg0.positionX + (x_disp ), msg0.positionY + (y_disp)));
+	}
 }
 
 bool Game::checkCollision(sf::Sprite* s1, sf::Sprite* s2)
@@ -268,24 +341,27 @@ sf::Vector2f Game::checkLineCollision(sf::Vector2f originOne, sf::Vector2f point
 	return outputVector;
 }
 
-sf::Vector2f Game::HitScan(sf::Vector2f lineOrigin, sf::Vector2f lineEnd, sf::Sprite sprite)
+sf::Vector2f Game::HitScan(sf::Vector2f lineOrigin, sf::Vector2f lineEnd, Player otherPlayer)
 {
 	sf::Vector2f topLeft;
 	sf::Vector2f topRight;
 	sf::Vector2f botLeft;
 	sf::Vector2f botRight;
 
-	topLeft.x = sprite.getGlobalBounds().left;
-	topLeft.y = sprite.getGlobalBounds().top;
+	int diffX = (lineEnd.x - lineOrigin.x) > 0 ? 1 : -1;
+	int diffY = (lineEnd.y - lineOrigin.y) > 0 ? 1 : -1;
 
-	topRight.x = sprite.getGlobalBounds().left + collider.getGlobalBounds().width;
-	topRight.y = sprite.getGlobalBounds().top;
+	topLeft.x = otherPlayer.getGlobalBounds().left;
+	topLeft.y = otherPlayer.getGlobalBounds().top;
 
-	botLeft.x = sprite.getGlobalBounds().left;
-	botLeft.y = sprite.getGlobalBounds().top + collider.getGlobalBounds().height;
+	topRight.x = otherPlayer.getGlobalBounds().left + otherPlayer.getGlobalBounds().width;
+	topRight.y = otherPlayer.getGlobalBounds().top;
 
-	botRight.x = sprite.getGlobalBounds().left + collider.getGlobalBounds().width;
-	botRight.y = sprite.getGlobalBounds().top + collider.getGlobalBounds().height;
+	botLeft.x = otherPlayer.getGlobalBounds().left;
+	botLeft.y = otherPlayer.getGlobalBounds().top + otherPlayer.getGlobalBounds().height;
+
+	botRight.x = otherPlayer.getGlobalBounds().left + otherPlayer.getGlobalBounds().width;
+	botRight.y = otherPlayer.getGlobalBounds().top + otherPlayer.getGlobalBounds().height;
 
 	sf::Vector2f leftCollision = checkLineCollision(lineOrigin, lineEnd, botLeft, topLeft);
 	sf::Vector2f rightCollision = checkLineCollision(lineOrigin, lineEnd, topRight, botRight);
@@ -295,23 +371,24 @@ sf::Vector2f Game::HitScan(sf::Vector2f lineOrigin, sf::Vector2f lineEnd, sf::Sp
 	sf::Vector2f outputCollision(-1, -1);
 	float dist = 100000.f;
 
-	if (leftCollision.y > topLeft.y && leftCollision.y < botLeft.y) {
+	// Checks if each collision is within bounds of line, in the right direction, and the nearest collision to the origin point
+	if ((leftCollision.y > topLeft.y && leftCollision.y < botLeft.y) && ((leftCollision.y - lineOrigin.y) * diffY > 0)) {
 		outputCollision = leftCollision;
 		dist = Distance(outputCollision, lineOrigin);
 	}
-	if (rightCollision.y > topRight.y && rightCollision.y < botLeft.y) {
+	if ((rightCollision.y > topRight.y && rightCollision.y < botLeft.y) && ((rightCollision.y - lineOrigin.y) * diffY > 0)) {
 		if (Distance(rightCollision, lineOrigin) < dist) {
 			outputCollision = rightCollision;
 			dist = Distance(rightCollision, lineOrigin);
 		}
 	}
-	if (topCollision.x > topLeft.x && topCollision.x < topRight.x) {
+	if ((topCollision.x > topLeft.x && topCollision.x < topRight.x) && ((topCollision.x - lineOrigin.x) * diffX > 0)) {
 		if (Distance(topCollision, lineOrigin) < dist) {
 			outputCollision = topCollision;
 			dist = Distance(topCollision, lineOrigin);
 		}
 	}
-	if (botCollision.x > botLeft.x && botCollision.x < botRight.x) {
+	if ((botCollision.x > botLeft.x && botCollision.x < botRight.x) && ((botCollision.x - lineOrigin.x) * diffX > 0)) {
 		if (Distance(botCollision, lineOrigin) < dist) {
 			outputCollision = botCollision;
 			dist = Distance(botCollision, lineOrigin);
@@ -351,16 +428,16 @@ void Game::processMessage(sf::Packet _packet)
 	int messageType;
 
 	_packet >> messageType;
-	sf::Packet pingPack;
-	SetUpMessage pingMessage;
 
 	switch (messageType) {
 	case MessageType::PingRequest:
-
+	{
+		SetUpMessage pingMessage;
+		sf::Packet pingPack;
 		float messageTime;
 		_packet >> messageTime;
 
-		pingMessage.pingType = MessageType::PingInfo;
+		pingMessage.messageType = MessageType::PingInfo;
 		pingPack
 			<< MessageType::PingInfo
 			<< messageTime
@@ -369,11 +446,13 @@ void Game::processMessage(sf::Packet _packet)
 		if (localSock.send(pingPack, serverAddr, serverPort) != sf::Socket::Done) {
 			printf("Data send failed\n");
 		}
+	}
 		break;
 
 	case MessageType::PingInfo:
-
-		pingMessage.pingType = messageType;
+	{
+		SetUpMessage pingMessage;
+		pingMessage.messageType = messageType;
 
 		_packet
 			>> pingMessage.time
@@ -385,8 +464,9 @@ void Game::processMessage(sf::Packet _packet)
 		}
 
 		latency = (totalTime - pingMessage.time);
-		totalTime = pingMessage.totalTime +latency;
-		printf("Latency: %f\n", latency);
+		totalTime = pingMessage.totalTime + latency;
+		printf("Ping successfull\nLatency: %f\n", latency);
+	}
 		break;
 
 	case MessageType::Position:
@@ -422,12 +502,13 @@ void Game::processMessage(sf::Packet _packet)
 		break;
 
 	case MessageType::PlayerPositions:
+	{
 		int playerCount;
 
 		_packet >> playerCount;
 
 		for (int i = 0; i < playerCount; i++) {
-			
+
 			PlayerInfo enemyInfo;
 
 			bool found = false;
@@ -443,9 +524,13 @@ void Game::processMessage(sf::Packet _packet)
 			for (auto enemy : enemies) {
 				if (enemy->playerID == enemyInfo.playerID) {
 					//enemy->setPosition(enemyInfo.positionX, enemyInfo.positionY);
-					enemy->messageHistory.push_back(enemyInfo);
-					
 					found = true;
+					int messagesSize = enemy->messageHistory.size();
+
+					enemy->messageHistory.push_back(enemyInfo);
+					if (messagesSize > 3) {
+						enemy->messageHistory.erase(enemy->messageHistory.begin());
+					}
 				}
 			}
 
@@ -462,7 +547,7 @@ void Game::processMessage(sf::Packet _packet)
 			}
 
 		}
-
+	}
 		break;
 
 	}
@@ -472,7 +557,7 @@ void Game::sendMessage(sf::Packet _packet, sf::IpAddress _destAddr, unsigned sho
 {
 	// Simulate packet drop
 	// Lose 40% of packets
-	//if ((rand() % 100) > 40)
+	//if ((rand() % 100) > 20)
 	{
 		if (localSock.send(_packet, _destAddr, _destPort) != sf::Socket::Done) {
 			printf("Data send failed\n");
@@ -482,19 +567,23 @@ void Game::sendMessage(sf::Packet _packet, sf::IpAddress _destAddr, unsigned sho
 
 void Game::pingServer(sf::UdpSocket* _sock, sf::IpAddress _addr, unsigned short _port)
 {
+	/*for (auto enemy : enemies) {
+		enemy->messageHistory.clear();
+	}
+
 	sf::Packet pingInfo;
 	SetUpMessage pingMsg;
 
-	pingMsg.pingType = MessageType::PingRequest;
+	pingMsg.messageType = MessageType::PingRequest;
 	pingMsg.time = totalTime;
 	pingMsg.totalTime = totalTime;
 	pingMsg.playerIdentity = localIdentity;
 
-	pingInfo << pingMsg.pingType << pingMsg.time << pingMsg.totalTime << pingMsg.playerIdentity;
+	pingInfo << pingMsg.messageType << pingMsg.time << pingMsg.totalTime << pingMsg.playerIdentity;
 
 	if (_sock->send(pingInfo, _addr, _port) != sf::Socket::Done) {
 		printf("Ping send failed\n");
-	}
+	}*/
 
 	return;
 }
