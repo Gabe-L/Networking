@@ -35,6 +35,8 @@ struct ShotMessage : BaseMessage {
 };
 
 struct TerminateMessage : BaseMessage{
+	int palyerID;
+
 	TerminateMessage()
 	{
 		messageType = MessageType::Terminate;
@@ -75,6 +77,7 @@ struct PlayerInfo {
 	int playerID;
 	float positionX;
 	float positionY;
+	float rotation;
 	float time;
 };
 
@@ -84,18 +87,20 @@ struct ClientInfo : BaseMessage {
 	float positionY;
 	float mousePosX;
 	float mousePosY;
+	float rotation;
 	float time;
 
 	ClientInfo()
 	{
 	}
 
-	ClientInfo(int _enemyID, float _positionX, float _positionY, float _mousePosX, float mousePosY, float _time) :
+	ClientInfo(int _enemyID, float _positionX, float _positionY, float _mousePosX, float mousePosY, float _rotation, float _time) :
 		enemyID(_enemyID),
 		positionX(_positionX),
 		positionY(_positionY),
 		mousePosX(_mousePosX),
 		mousePosY(mousePosY),
+		rotation(_rotation),
 		time(_time)
 	{
 		messageType = MessageType::Position;

@@ -7,7 +7,7 @@ Simulation::Simulation() : serverTime(0.0f), tick(0.0f)
 	serverIp = "127.0.0.1";
 	serverPort = 255;
 
-	collisionTexture.loadFromFile("gfx/playerSprite.png");
+	collisionTexture.loadFromFile("gfx/playerSoldSprite.png");
 
 	if (sock.bind(serverPort, serverIp) != sf::Socket::Done) {
 		std::printf("Server socket bind failed\n");
@@ -50,14 +50,29 @@ bool Simulation::update(float deltaTime)
 
 		playersInfo << playerCount.messageType << playerCount.playerCount;
 
+		// Handle timeouts
+		for (int i = 0; i < players.size(); i++) {
+			players.at(i)->timeSinceLastMessage += tick;
+			if (players.at(i)->timeSinceLastMessage > 5.0f) {
+				std::printf("Player %i has timed out\n", players.at(i)->identity);
+				players.erase(players.begin() + i);
+			}
+		}
+
 		for (auto player : players) {
 
-			if (tickCount % (64 * 60) == 0) {
-				SetUpMessage setupMessage;
-				setupMessage.messageType = MessageType::PingInfo;
-				setupMessage.playerIdentity = player->identity;
-				setupMessage.
+			if (tickCount % (64 * 20) == 0) {
+				std::printf("20 Seconds has passed, retesting ping\n");
+				sf::Packet pingPack;
+				pingPack
+					<< MessageType::PingInfo
+					<< player->previousMessageTime
+					<< serverTime
+					<< player->identity;
+				sock.send(pingPack, player->address, player->port);
+				
 			}
+
 			player->shotCoolDown -= tick;
 
 			for (auto enemy : players) {
@@ -68,9 +83,8 @@ bool Simulation::update(float deltaTime)
 						if (HitScan(enemy->position, enemy->mousePosition, player).x > -1.0f) {
 							// Enemy has hit player, reduce health
 							std::printf("Hit detected.\n");
-							enemy->shotCoolDown = 1.0f;
 							enemy->mousePosition = sf::Vector2f(-1, -1);
-							
+							enemy->shotCoolDown = 1.0f;
 						}
 					}
 				}
@@ -80,15 +94,16 @@ bool Simulation::update(float deltaTime)
 			playerInfo.playerID = player->identity;
 			playerInfo.positionX = player->position.x;
 			playerInfo.positionY = player->position.y;
+			playerInfo.rotation = player->lastRotation;
 			playerInfo.time = player->remoteTime;
 
 			playersInfo 
 				<< playerInfo.playerID
 				<< playerInfo.positionX
 				<< playerInfo.positionY
+				<< playerInfo.rotation
 				<< playerInfo.time;
 
-			tick = 0.0f;
 
 		}
 
@@ -97,6 +112,7 @@ bool Simulation::update(float deltaTime)
 				printf("Positions send failed\n");
 			}
 		}
+		tick = 0.0f;
 
 	}
 
@@ -123,20 +139,52 @@ bool Simulation::update(float deltaTime)
 				>> clientInfo.positionY
 				>> clientInfo.mousePosX
 				>> clientInfo.mousePosY
+				>> clientInfo.rotation
 				>> clientInfo.time;
 
-			for (auto player : players) {
-				if (player->identity == clientInfo.enemyID) {
+			bool found = false;
 
+			for (auto player : players) {
+				if (player->identity == clientInfo.enemyID || (player->address == recvAddr && player->port == recvPort)) {
+					found = true;
+					player->timeSinceLastMessage = 0.0f;
 					if (clientInfo.time == player->previousMessageTime) {
 						break;
 					}
 
 					player->position = sf::Vector2f(clientInfo.positionX, clientInfo.positionY);
 					player->mousePosition = sf::Vector2f(clientInfo.mousePosX, clientInfo.mousePosY);
+					player->lastRotation = clientInfo.rotation;
 					player->remoteTime = clientInfo.time;
 					player->previousMessageTime = clientInfo.time;
 					break;
+				}
+			}
+
+			if (!found)
+			{
+				ClientConnection* newPlayer = new ClientConnection();
+
+				newPlayer->address = recvAddr;
+				newPlayer->port = recvPort;
+				newPlayer->identity = players.size();
+				newPlayer->collisionSprite.setTexture(collisionTexture);
+				newPlayer->collisionSprite.setScale(0.5f, 0.5f);
+
+				players.push_back(newPlayer);
+				sf::Packet replyPack;
+
+				replyPack
+					<< MessageType::PingInfo
+					<< serverTime
+					<< serverTime
+					<< newPlayer->identity;
+
+				if (sock.send(replyPack, newPlayer->address, newPlayer->port) != sf::Socket::Done) {
+					printf("Ping reply failed for new player\n");
+				}
+				else {
+					printf("New player accepted, identity: %i\n", newPlayer->identity);
 				}
 			}
 			break;
@@ -160,6 +208,8 @@ bool Simulation::update(float deltaTime)
 			if (setUpMessage.playerIdentity >= 0) {
 				for (auto player : players) {
 					if (player->identity == setUpMessage.playerIdentity) {
+						player->timeSinceLastMessage = 0.0f;
+						replyPack << player->identity;
 						if (sock.send(replyPack, player->address, player->port) != sf::Socket::Done) {
 							printf("Ping reply failed\n");
 						}
@@ -193,8 +243,22 @@ bool Simulation::update(float deltaTime)
 		case MessageType::Terminate:
 		{
 			for (int i = 0; i < players.size(); i++) {
-				if (players.at(i)->address == recvAddr) {
+				if (players.at(i)->address == recvAddr && players.at(i)->port == recvPort) {
+					TerminateMessage playerDCInfo;
+					playerDCInfo.palyerID = players.at(i)->identity;
+					std::printf("Player %i disconnected\n", players.at(i)->identity);
 					players.erase(players.begin() + i);
+
+					sf::Packet dcPack;
+					dcPack
+						<< playerDCInfo.messageType
+						<< playerDCInfo.palyerID;
+
+					for (auto player : players) {
+						sock.send(dcPack, player->address, player->port);
+					}
+
+					break;
 				}
 			}
 		}

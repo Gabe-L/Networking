@@ -7,8 +7,8 @@ Game::Game(sf::RenderWindow* hwnd)
 	window = hwnd;
 
 	// Setup player
-	playerTexture.loadFromFile("gfx/playerSprite.png");
-	enemyTexture.loadFromFile("gfx/enemySprite.png");
+	playerTexture.loadFromFile("gfx/playerSoldSprite.png");
+	enemyTexture.loadFromFile("gfx/enemySoldSprite.png");
 	
 	mapTexture.loadFromFile("gfx/dust2.jpg");
 	map.setTexture(mapTexture);
@@ -19,9 +19,28 @@ Game::Game(sf::RenderWindow* hwnd)
 	localPlayer.setScale(0.5f, 0.5f);
 	localIdentity = -1;
 
-	// Setup test collider
-	collider.setTexture(playerTexture);
-	collider.setPosition(window->getSize().x / 2, window->getSize().y / 2);
+	// Setup walls
+	
+	sf::Vector2f wallPos[4] = {
+		sf::Vector2f(-1, 0),
+		sf::Vector2f(0, 1),
+		sf::Vector2f(1, 0),
+		sf::Vector2f(0, -1)
+	};
+
+	wallTexture.loadFromFile("gfx/wallSprite.png");
+
+	for (int i = 0; i < 4; i++)
+	{
+		walls[i].setTexture(wallTexture);
+		int width = walls[i].getTextureRect().width;
+		int height = walls[i].getTextureRect().height;
+		walls[i].setOrigin(width / 2, height / 2);
+		walls[i].setPosition(window->getSize().x / 2 + ((window->getSize().x / 4) * wallPos[i].x), window->getSize().y / 2 + ((window->getSize().x / 4) * wallPos[i].y));
+		int next = i + 1;
+		next = next > 3 ? 0 : next;
+		walls[i].scale(abs(wallPos[next].x) + 0.5, abs(wallPos[next].y) + 0.5);
+	}
 
 	latency = 0.0f;
 	tick = 0.f;
@@ -61,7 +80,15 @@ Game::~Game()
 
 void Game::update(float deltaTime)
 {
+	sf::Vector2f rotVector(MousePos.x - localPlayer.getPosition().x, MousePos.y - localPlayer.getPosition().y);
+	float mag = pow(rotVector.x, 2) + pow(rotVector.y, 2);
+	mag = sqrtf(mag);
+	rotVector /= mag;
 	
+	float rotation = (atan2(rotVector.y, rotVector.x)) * 180 / 3.141;
+	localPlayer.setRotation(rotation);
+
+
 	tick += deltaTime;
 	totalTime += deltaTime;
 
@@ -76,9 +103,15 @@ void Game::update(float deltaTime)
 	}
 
 	for (auto enemy : enemies) {
-		int xpos = enemy->getPosition().x;
 		if (enemy->messageHistory.size() >= 3) {
-			predictPosition(totalTime + (latency), enemy);
+			enemy->PredictPosition(totalTime + latency, false);
+			//enemy->setRotation(enemy->messageHistory[enemy->messageHistory.size() - 1].angle);
+		}
+	}
+
+	for (int i = 0; i < enemies.size(); i++) {
+		if (enemies.at(i)->messageHistory.size() > 0) {
+			enemies.at(i)->setRotation(enemies.at(i)->messageHistory[enemies.at(i)->messageHistory.size() - 1].rotation);
 		}
 	}
 
@@ -87,11 +120,30 @@ void Game::update(float deltaTime)
 	sf::Vector2f direction = MousePos;
 	direction -= localPlayer.getPosition();
 
-	//sf::Vector2f collisionPos = HitScan(localPlayer.getPosition(), MousePos, collider);
 	sf::Vector2f collisionPos(-1, -1);
+	sf::Vector2f tempCollision(-1, -1);
+	float distance = 100000.0f;
 
 	for (auto enemy : enemies) {
-		collisionPos = HitScan(localPlayer.getPosition(), MousePos, *enemy);
+		tempCollision = HitScan(localPlayer.getPosition(), MousePos, *enemy);
+		if (tempCollision.x != -1) {
+			float tempDistance = Distance(localPlayer.getPosition(), tempCollision);
+			if (tempDistance < distance) {
+				collisionPos = tempCollision;
+				distance = tempDistance;
+			}
+		}
+	}
+
+	for (int i = 0; i < 4; i++) {
+		tempCollision = HitScan(localPlayer.getPosition(), MousePos, walls[i]);
+		if (tempCollision.x != -1) {
+			float tempDistance = Distance(localPlayer.getPosition(), tempCollision);
+			if (tempDistance < distance) {
+				collisionPos = tempCollision;
+				distance = tempDistance;
+			}
+		}
 	}
 
 	hitScanLine[0].position = localPlayer.getPosition();
@@ -109,15 +161,23 @@ void Game::update(float deltaTime)
 	{
 		tickCount++;
 
-		/*if (tickCount % (64 * 60) == 0) {
-			printf("60 seconds have passed, pinging\n");
+		for (int i = 0; i < enemies.size(); i++) {
+			enemies.at(i)->timeSinceLastMessage += tick;
+			if (enemies.at(i)->timeSinceLastMessage > 5.0f) {
+				printf("Enemy %i timeout\n", enemies.at(i)->playerID);
+				enemies.erase(enemies.begin() + i);
+			}
+		}
+
+		/*if (tickCount % (64 * 10) == 0) {
+			printf("10 seconds have passed, pinging\n");
 			pingServer(&localSock, serverAddr, serverPort);
 		}*/
 
 		//std::printf("Time: %.2f\n", totalTime);
 		tick = 0.0f;
 		// Send position data
-		ClientInfo sendData(localIdentity, localPlayer.getPosition().x, localPlayer.getPosition().y, -1.0f, -1.0f, totalTime);
+		ClientInfo sendData(localIdentity, localPlayer.getPosition().x, localPlayer.getPosition().y, -1.0f, -1.0f, localPlayer.getRotation(), totalTime);
 
 		if (clicked) {
 			sendData.mousePosX = MousePos.x;
@@ -134,6 +194,7 @@ void Game::update(float deltaTime)
 				<< sendData.positionY
 				<< sendData.mousePosX
 				<< sendData.mousePosY
+				<< sendData.rotation
 				<< sendData.time;
 
 			sendMessage(packetInfo, serverAddr, serverPort);
@@ -201,7 +262,9 @@ void Game::render()
 		window->draw(*enemy);
 	}
 
-	window->draw(collider);
+	for (int i = 0; i < 4; i++) {
+		window->draw(walls[i]);
+	}
 	window->draw(hitScanLine);
 
 	renderUI();
@@ -234,43 +297,43 @@ void Game::predictPosition(float time, Player* enemy) {
 
 	enemy->setPosition(sf::Vector2f(msg0.positionX + (x_speed * timePassed), msg0.positionY + (y_speed * timePassed)));*/
 
-	// Quadratic
+	//// Quadratic
 	float x_acc, y_acc;
 	float x_v = 0.f, y_v = 0.f;
 	float x_u = 0.f, y_u = 0.f;
 
-	float timePassed = msg0.time - msg1.time;
+	float finalTime = msg0.time - msg1.time;
 
-	if (timePassed != 0.0f) {
-		x_v = (msg0.positionX - msg1.positionX) / timePassed;
-		y_v = (msg0.positionY - msg1.positionY) / timePassed;
+	if (finalTime != 0.0f) {
+		x_v = (msg0.positionX - msg1.positionX) / finalTime;
+		y_v = (msg0.positionY - msg1.positionY) / finalTime;
 	}
 	else {
-		x_v = 0.0f;
-		y_v = 0.0f;
+		return;
 	}
-	timePassed = msg1.time - msg2.time;
+	
+	float initialTime = msg1.time - msg2.time;
 
-	if (timePassed != 0.0f) {
-		x_u = (msg1.positionX - msg2.positionX) / timePassed;
-		y_u = (msg1.positionY - msg2.positionY) / timePassed;
+	if (initialTime != 0.0f) {
+		x_u = (msg1.positionX - msg2.positionX) / initialTime;
+		y_u = (msg1.positionY - msg2.positionY) / initialTime;
 	}
 	else {
-		x_u = 0.0f;
-		y_u = 0.0f;
+		return;
 	}
 
 
 	x_acc = x_v - x_u;
 	y_acc = y_v - y_u;
 
-	if (msg0.time - msg2.time != 0.0f) {
-		x_acc /= msg0.time - msg2.time;
-		y_acc /= msg0.time - msg2.time;
+	float overallTime = msg0.time - msg2.time;
+
+	if (overallTime != 0.0f) {
+		x_acc /= overallTime;
+		y_acc /= overallTime;
 	}
 	else {
-		x_acc = 0.0f;
-		y_acc = 0.0f;
+		return;
 	}
 
 
@@ -278,19 +341,18 @@ void Game::predictPosition(float time, Player* enemy) {
 	// s = ut + 0.5 * at ^2
 
 	float x_disp = 0.f;
-	timePassed = time - msg0.time;
+	float currentTime = time - msg0.time;
 
-	x_disp += x_u * timePassed;
-	x_disp += 0.5 * (x_acc * pow(timePassed, 2));
+	x_disp += x_u * currentTime;
+	x_disp += 0.5 * (x_acc * pow(currentTime, 2));
 
 	float y_disp = 0.f;
-	timePassed = time - msg0.time;
 
-	y_disp += y_u * timePassed;
-	y_disp += 0.5 * (y_acc * pow(timePassed, 2));
+	y_disp += y_u * currentTime;
+	y_disp += 0.5 * (y_acc * pow(currentTime, 2));
 
 	if (x_disp && y_disp) {
-		enemy->setPosition(sf::Vector2f(msg0.positionX + (x_disp ), msg0.positionY + (y_disp)));
+		enemy->setPosition(sf::Vector2f(msg0.positionX + (x_disp), msg0.positionY + (y_disp)));
 	}
 }
 
@@ -341,7 +403,7 @@ sf::Vector2f Game::checkLineCollision(sf::Vector2f originOne, sf::Vector2f point
 	return outputVector;
 }
 
-sf::Vector2f Game::HitScan(sf::Vector2f lineOrigin, sf::Vector2f lineEnd, Player otherPlayer)
+sf::Vector2f Game::HitScan(sf::Vector2f lineOrigin, sf::Vector2f lineEnd, sf::Sprite otherPlayer)
 {
 	sf::Vector2f topLeft;
 	sf::Vector2f topRight;
@@ -463,42 +525,10 @@ void Game::processMessage(sf::Packet _packet)
 			localIdentity = pingMessage.playerIdentity;
 		}
 
-		latency = (totalTime - pingMessage.time);
-		totalTime = pingMessage.totalTime + latency;
+		latency = (totalTime - pingMessage.time) / 2;
+		totalTime = (pingMessage.totalTime + latency);
 		printf("Ping successfull\nLatency: %f\n", latency);
 	}
-		break;
-
-	case MessageType::Position:
-
-		//NetMessage incomingPosition;
-		//incomingPosition.messageType = messageType;
-
-		//_packet
-		//	<< incomingPosition.enemyID
-		//	<< incomingPosition.positionX
-		//	<< incomingPosition.positionY
-		//	<< incomingPosition.mousePosX
-		//	<< incomingPosition.mousePosY
-		//	<< incomingPosition.time;
-
-		//for (auto enemy : enemies) {
-		//	if (enemy->playerID == incomingPosition.enemyID) {
-		//		
-		//		enemy->setPosition(incomingPosition.positionX, incomingPosition.positionY);
-		//		break;
-		//	}
-		//}
-
-		//// New enemy info received
-
-		//Player* newEnemy = new Player();
-		//
-		//newEnemy->setTexture(enemyTexture);
-		//newEnemy->setPosition(incomingPosition.positionX, incomingPosition.positionY);
-
-		//enemies.push_back(newEnemy);
-
 		break;
 
 	case MessageType::PlayerPositions:
@@ -510,11 +540,12 @@ void Game::processMessage(sf::Packet _packet)
 		for (int i = 0; i < playerCount; i++) {
 
 			PlayerInfo enemyInfo;
-
 			bool found = false;
+
 			_packet >> enemyInfo.playerID;
 			_packet >> enemyInfo.positionX;
 			_packet >> enemyInfo.positionY;
+			_packet >> enemyInfo.rotation;
 			_packet >> enemyInfo.time;
 
 			if (enemyInfo.playerID == localIdentity || localIdentity == -1) {
@@ -523,7 +554,7 @@ void Game::processMessage(sf::Packet _packet)
 
 			for (auto enemy : enemies) {
 				if (enemy->playerID == enemyInfo.playerID) {
-					//enemy->setPosition(enemyInfo.positionX, enemyInfo.positionY);
+					enemy->timeSinceLastMessage = 0.0f;
 					found = true;
 					int messagesSize = enemy->messageHistory.size();
 
@@ -550,6 +581,26 @@ void Game::processMessage(sf::Packet _packet)
 	}
 		break;
 
+	case MessageType::Terminate:
+	{
+		int playerID;
+		_packet >> playerID;
+
+		if (playerID == -1) {
+			printf("Server disconnected\n");
+			enemies.clear();
+		}
+		else {
+			for (int i = 0; i < enemies.size(); i++) {
+				if (enemies.at(i)->playerID == playerID) {
+					printf("Player %i disconnected from the server\n", playerID);
+					enemies.erase(enemies.begin() + i);
+					break;
+				}
+			}
+		}
+	}
+		break;
 	}
 }
 
@@ -567,10 +618,6 @@ void Game::sendMessage(sf::Packet _packet, sf::IpAddress _destAddr, unsigned sho
 
 void Game::pingServer(sf::UdpSocket* _sock, sf::IpAddress _addr, unsigned short _port)
 {
-	/*for (auto enemy : enemies) {
-		enemy->messageHistory.clear();
-	}
-
 	sf::Packet pingInfo;
 	SetUpMessage pingMsg;
 
@@ -583,7 +630,7 @@ void Game::pingServer(sf::UdpSocket* _sock, sf::IpAddress _addr, unsigned short 
 
 	if (_sock->send(pingInfo, _addr, _port) != sf::Socket::Done) {
 		printf("Ping send failed\n");
-	}*/
+	}
 
 	return;
 }
