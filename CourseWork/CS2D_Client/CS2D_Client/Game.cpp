@@ -6,13 +6,20 @@ Game::Game(sf::RenderWindow* hwnd)
 {
 	window = hwnd;
 
+	scoreFont.loadFromFile("gfx/WeknowWindows.ttf");
+	scoreText.setFont(scoreFont);
+	scoreText.setPosition(20.0f, 20.0f);
+	scoreText.setString("Score: 0");
+	scoreText.setCharacterSize(24);
+	scoreText.setFillColor(sf::Color::Red);
+
 	// Setup player
 	playerTexture.loadFromFile("gfx/playerSoldSprite.png");
 	enemyTexture.loadFromFile("gfx/enemySoldSprite.png");
 	
 	mapTexture.loadFromFile("gfx/dust2.jpg");
 	map.setTexture(mapTexture);
-	map.setScale(2.0f, 2.0f);
+	map.setScale(2.5f, 2.5f);
 
 	localPlayer.setTexture(playerTexture);
 	localPlayer.OriginToCentre();
@@ -104,8 +111,7 @@ void Game::update(float deltaTime)
 
 	for (auto enemy : enemies) {
 		if (enemy->messageHistory.size() >= 3) {
-			enemy->PredictPosition(totalTime + latency, false);
-			//enemy->setRotation(enemy->messageHistory[enemy->messageHistory.size() - 1].angle);
+			enemy->PredictPosition(totalTime + latency, true);
 		}
 	}
 
@@ -480,7 +486,7 @@ void Game::endDraw()
 }
 
 void Game::renderUI() {
-
+	window->draw(scoreText);
 }
 
 void Game::reset() {
@@ -548,9 +554,11 @@ void Game::processMessage(sf::Packet _packet)
 			_packet >> enemyInfo.positionX;
 			_packet >> enemyInfo.positionY;
 			_packet >> enemyInfo.rotation;
+			_packet >> enemyInfo.score;
 			_packet >> enemyInfo.time;
 
 			if (enemyInfo.playerID == localIdentity || localIdentity == -1) {
+				scoreText.setString("Score: " + std::to_string(enemyInfo.score));
 				continue;
 			}
 

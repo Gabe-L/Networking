@@ -18,6 +18,7 @@ public:
 	float shotCoolDown = 0.0f;
 	float timeSinceLastMessage = 0.0f;
 	float lastRotation = 0.0f;
+	int score = 0;
 
 	// Network info
 	sf::IpAddress address;

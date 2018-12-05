@@ -74,11 +74,29 @@ struct PlayerCount : BaseMessage{
 };
 
 struct PlayerInfo {
+
+
 	int playerID;
 	float positionX;
 	float positionY;
 	float rotation;
+	int score;
 	float time;
+
+	PlayerInfo()
+	{
+	}
+
+	PlayerInfo(int _playerID, float _positionX, float _positonY, float _rotation, int _score, float _time) :
+		playerID(_playerID),
+		positionX(_positionX),
+		positionY(_positonY),
+		rotation(_rotation),
+		score(_score),
+		time(_time)
+	{
+	}
+
 };
 
 struct ClientInfo : BaseMessage {

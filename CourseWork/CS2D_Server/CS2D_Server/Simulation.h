@@ -16,6 +16,7 @@ public:
 
 private:
 
+	std::vector<int> idRecycle;
 	float serverTime;
 	float tick;
 	int tickCount = 0;

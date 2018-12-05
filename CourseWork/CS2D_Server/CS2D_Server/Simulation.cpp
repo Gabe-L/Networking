@@ -55,6 +55,7 @@ bool Simulation::update(float deltaTime)
 			players.at(i)->timeSinceLastMessage += tick;
 			if (players.at(i)->timeSinceLastMessage > 5.0f) {
 				std::printf("Player %i has timed out\n", players.at(i)->identity);
+				idRecycle.push_back(players.at(i)->identity);
 				players.erase(players.begin() + i);
 			}
 		}
@@ -82,7 +83,10 @@ bool Simulation::update(float deltaTime)
 					{
 						if (HitScan(enemy->position, enemy->mousePosition, player).x > -1.0f) {
 							// Enemy has hit player, reduce health
-							std::printf("Hit detected.\n");
+							std::printf("Player %i shot Player %i\n", enemy->identity, player->identity);
+							if (player->takeDamage()) {
+								enemy->score++;
+							}
 							enemy->mousePosition = sf::Vector2f(-1, -1);
 							enemy->shotCoolDown = 1.0f;
 						}
@@ -90,18 +94,14 @@ bool Simulation::update(float deltaTime)
 				}
 			}
 
-			PlayerInfo playerInfo;
-			playerInfo.playerID = player->identity;
-			playerInfo.positionX = player->position.x;
-			playerInfo.positionY = player->position.y;
-			playerInfo.rotation = player->lastRotation;
-			playerInfo.time = player->remoteTime;
+			PlayerInfo playerInfo(player->identity, player->position.x, player->position.y, player->lastRotation, player->score, player->remoteTime);
 
 			playersInfo 
 				<< playerInfo.playerID
 				<< playerInfo.positionX
 				<< playerInfo.positionY
 				<< playerInfo.rotation
+				<< playerInfo.score
 				<< playerInfo.time;
 
 
@@ -167,7 +167,13 @@ bool Simulation::update(float deltaTime)
 
 				newPlayer->address = recvAddr;
 				newPlayer->port = recvPort;
-				newPlayer->identity = players.size();
+				if (idRecycle.size() > 0) {
+					newPlayer->identity = idRecycle.front();
+					idRecycle.erase(idRecycle.begin());
+				}
+				else {
+					newPlayer->identity = players.size();
+				}
 				newPlayer->collisionSprite.setTexture(collisionTexture);
 				newPlayer->collisionSprite.setScale(0.5f, 0.5f);
 
@@ -222,7 +228,13 @@ bool Simulation::update(float deltaTime)
 
 				newPlayer->address = recvAddr;
 				newPlayer->port = recvPort;
-				newPlayer->identity = players.size();
+				if (idRecycle.size() > 0) {
+					newPlayer->identity = idRecycle.front();
+					idRecycle.erase(idRecycle.begin());
+				}
+				else {
+					newPlayer->identity = players.size();
+				}
 				newPlayer->collisionSprite.setTexture(collisionTexture);
 				newPlayer->collisionSprite.setScale(0.5f, 0.5f);
 
@@ -247,6 +259,7 @@ bool Simulation::update(float deltaTime)
 					TerminateMessage playerDCInfo;
 					playerDCInfo.palyerID = players.at(i)->identity;
 					std::printf("Player %i disconnected\n", players.at(i)->identity);
+					idRecycle.push_back(players.at(i)->identity);
 					players.erase(players.begin() + i);
 
 					sf::Packet dcPack;

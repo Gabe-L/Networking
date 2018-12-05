@@ -72,5 +72,8 @@ private:
 
 	sf::Vector2f MousePos;
 
+	sf::Font scoreFont;
+	sf::Text scoreText;
+
 };
 
