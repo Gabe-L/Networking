@@ -129,6 +129,7 @@ void Game::update(float deltaTime)
 		if (tempCollision.x != -1) {
 			float tempDistance = Distance(localPlayer.getPosition(), tempCollision);
 			if (tempDistance < distance) {
+				localPlayer.hitEnemy = true;
 				collisionPos = tempCollision;
 				distance = tempDistance;
 			}
@@ -140,6 +141,7 @@ void Game::update(float deltaTime)
 		if (tempCollision.x != -1) {
 			float tempDistance = Distance(localPlayer.getPosition(), tempCollision);
 			if (tempDistance < distance) {
+				localPlayer.hitEnemy = false;
 				collisionPos = tempCollision;
 				distance = tempDistance;
 			}
@@ -179,7 +181,7 @@ void Game::update(float deltaTime)
 		// Send position data
 		ClientInfo sendData(localIdentity, localPlayer.getPosition().x, localPlayer.getPosition().y, -1.0f, -1.0f, localPlayer.getRotation(), totalTime);
 
-		if (clicked) {
+		if (clicked && localPlayer.hitEnemy) {
 			sendData.mousePosX = MousePos.x;
 			sendData.mousePosY = MousePos.y;
 		}

@@ -19,6 +19,7 @@ public:
 	float timeSinceLastMessage;
 	int playerID;
 	std::vector<PlayerInfo> messageHistory;
+	bool hitEnemy = false;
 
 protected:
 	sf::Vector2f velocity;
